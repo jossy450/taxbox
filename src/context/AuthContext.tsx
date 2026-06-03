@@ -19,26 +19,69 @@ interface AuthContextType extends AuthState {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+const DEMO_USERS: { email: string; password: string; user: User }[] = [
+  { email: 'admin@taxbox.ng', password: 'demo123', user: { id: 'demo-admin', email: 'admin@taxbox.ng', name: 'Admin User', role: 'admin', company: 'TaxBox NG' } },
+  { email: 'hr@company.com', password: 'demo123', user: { id: 'demo-hr', email: 'hr@company.com', name: 'HR Manager', role: 'corporate', company: 'ACME Corp' } },
+  { email: 'consultant@taxpro.com', password: 'demo123', user: { id: 'demo-consultant', email: 'consultant@taxpro.com', name: 'Tax Consultant', role: 'consultant', company: 'TaxPro Ltd' } },
+  { email: 'user@example.com', password: 'demo123', user: { id: 'demo-user', email: 'user@example.com', name: 'John Doe', role: 'individual' } },
+];
+
+const DEMO_TOKEN_PREFIX = 'demo_token_';
+const LOCAL_AUTH_KEY = 'taxbox_local_auth';
+
+function generateDemoToken(email: string) {
+  return DEMO_TOKEN_PREFIX + btoa(email) + '_' + Date.now();
+}
+
+function isDemoToken(token: string) {
+  return token.startsWith(DEMO_TOKEN_PREFIX);
+}
+
+function findDemoUser(email: string, password: string) {
+  return DEMO_USERS.find(u => u.email === email && u.password === password);
+}
+
+function isBackendReachable(): Promise<boolean> {
+  return fetch('/api/health', { method: 'GET', signal: AbortSignal.timeout(3000) })
+    .then(r => r.ok)
+    .catch(() => false);
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(getStoredUser);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const token = getToken();
-    if (token) {
-      apiGetMe(token)
-        .then(data => {
-          setUser(data.user);
-          setSession(data.user, token);
-        })
-        .catch(() => {
-          clearSession();
-          setUser(null);
-        })
-        .finally(() => setIsLoading(false));
-    } else {
+    if (!token) {
       setIsLoading(false);
+      return;
     }
+
+    if (isDemoToken(token)) {
+      const stored = localStorage.getItem(LOCAL_AUTH_KEY);
+      if (stored) {
+        try {
+          setUser(JSON.parse(stored));
+        } catch {
+          clearSession();
+          localStorage.removeItem(LOCAL_AUTH_KEY);
+        }
+      }
+      setIsLoading(false);
+      return;
+    }
+
+    apiGetMe(token)
+      .then(data => {
+        setUser(data.user);
+        setSession(data.user, token);
+      })
+      .catch(() => {
+        clearSession();
+        setUser(null);
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
@@ -47,8 +90,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(data.user, data.token);
       setUser(data.user);
       return { success: true };
-    } catch (err) {
-      return { success: false, error: (err as Error).message };
+    } catch {
+      const demo = findDemoUser(email, password);
+      if (demo) {
+        const token = generateDemoToken(email);
+        setSession(demo.user, token);
+        localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(demo.user));
+        setUser(demo.user);
+        return { success: true };
+      }
+      const reachable = await isBackendReachable();
+      if (!reachable) {
+        return { success: false, error: 'Backend server is not running. Login is unavailable in demo mode for this account.' };
+      }
+      return { success: false, error: 'Invalid email or password' };
     }
   }, []);
 
@@ -58,13 +113,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(result.user, result.token);
       setUser(result.user);
       return { success: true };
-    } catch (err) {
-      return { success: false, error: (err as Error).message };
+    } catch {
+      const reachable = await isBackendReachable();
+      if (!reachable) {
+        return { success: false, error: 'Backend server is not running. Registration is unavailable in demo mode.' };
+      }
+      return { success: false, error: 'Registration failed' };
     }
   }, []);
 
   const logout = useCallback(() => {
     clearSession();
+    localStorage.removeItem(LOCAL_AUTH_KEY);
     setUser(null);
   }, []);
 
@@ -75,6 +135,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const stored = JSON.parse(localStorage.getItem('taxbox_api_session') || '{}');
       stored.user = { ...stored.user, ...data };
       localStorage.setItem('taxbox_api_session', JSON.stringify(stored));
+      if (isDemoToken(token)) {
+        localStorage.setItem(LOCAL_AUTH_KEY, JSON.stringify(stored.user));
+      }
     }
   }, []);
 
@@ -86,17 +149,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const data = await apiForgotPassword(email);
       return { success: true, token: data.token };
-    } catch (err) {
-      return { success: false, error: (err as Error).message };
+    } catch {
+      const reachable = await isBackendReachable();
+      if (!reachable) {
+        return { success: false, error: 'Backend server is not running. Password reset is unavailable in demo mode.' };
+      }
+      return { success: false, error: 'Password reset request failed' };
     }
   }, []);
 
-  const resetPassword = useCallback(async (token: string, newPassword: string) => {
+  const resetPassword = useCallback(async (_token: string, _newPassword: string) => {
     try {
-      await apiResetPassword(token, newPassword);
+      await apiResetPassword(_token, _newPassword);
       return { success: true };
-    } catch (err) {
-      return { success: false, error: (err as Error).message };
+    } catch {
+      const reachable = await isBackendReachable();
+      if (!reachable) {
+        return { success: false, error: 'Backend server is not running. Password reset is unavailable in demo mode.' };
+      }
+      return { success: false, error: 'Password reset failed' };
     }
   }, []);
 
@@ -113,8 +184,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(data.user, data.token);
       setUser(data.user);
       return { success: true };
-    } catch (err) {
-      return { success: false, error: (err as Error).message };
+    } catch {
+      const reachable = await isBackendReachable();
+      if (!reachable) {
+        return { success: false, error: 'Backend server is not running. Google sign-in is unavailable in demo mode.' };
+      }
+      return { success: false, error: 'Google sign-in failed' };
     }
   }, []);
 

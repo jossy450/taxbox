@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useSubscription } from '../../context/SubscriptionContext';
-import ChatBot from '../chatbot/ChatBot';
 import type { UserRole } from '../../types/auth';
 
 const NAV_ITEMS: { to: string; label: string; icon: string; roles: UserRole[] }[] = [
@@ -127,7 +126,6 @@ export default function AppLayout() {
           </div>
         </main>
       </div>
-      <ChatBot />
     </div>
   );
 }

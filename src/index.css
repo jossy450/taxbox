@@ -5,3 +5,58 @@ body {
   font-family: system-ui, -apple-system, sans-serif;
   background: #f8fafc;
 }
+
+@media print {
+  body { background: white; }
+  @page { margin: 1.5cm; }
+
+  nav, header, footer, .no-print,
+  input, button, select, textarea,
+  [role="tab"], [role="tablist"],
+  .print\:hidden { display: none !important; }
+
+  .print-area {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    overflow: visible !important;
+    width: auto !important;
+    height: auto !important;
+    page-break-inside: avoid;
+  }
+
+  .print-card {
+    border: 1px solid #ddd !important;
+    box-shadow: none !important;
+    border-radius: 4px !important;
+    padding: 12px !important;
+    margin-bottom: 8px !important;
+    background: white !important;
+    break-inside: avoid;
+  }
+
+  .print-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+
+  .print-text-xl { font-size: 18pt !important; }
+  .print-text-lg { font-size: 14pt !important; }
+  .print-text-sm { font-size: 9pt !important; }
+  .print-font-bold { font-weight: 700 !important; }
+  .print-mb-1 { margin-bottom: 4pt !important; }
+  .print-mb-2 { margin-bottom: 8pt !important; }
+  .print-mb-4 { margin-bottom: 16pt !important; }
+  .print-mt-4 { margin-top: 16pt !important; }
+  .print-border-t { border-top: 1px solid #ccc !important; padding-top: 8pt !important; }
+
+  .print-table { width: 100% !important; border-collapse: collapse !important; }
+  .print-table th, .print-table td {
+    border: 1px solid #ccc !important;
+    padding: 6pt 8pt !important;
+    text-align: left !important;
+    font-size: 9pt !important;
+  }
+  .print-table th { background: #f0f0f0 !important; font-weight: 700 !important; }
+}

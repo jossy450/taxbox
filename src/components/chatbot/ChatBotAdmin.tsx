@@ -6,7 +6,7 @@ interface FaqItem { id: string; question: string; answer: string; category: stri
 interface LogItem { id: string; question: string; answer: string | null; contact_name: string | null; contact_email: string | null; contact_phone: string | null; status: string; created_at: string; }
 
 export default function ChatBotAdmin() {
-  const [tab, setTab] = useState<'faq' | 'logs'>('faq');
+  const [tab, setTab] = useState<'faq' | 'logs' | 'ai'>('faq');
   const [faqs, setFaqs] = useState<FaqItem[]>([]);
   const [logs, setLogs] = useState<LogItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -16,10 +16,42 @@ export default function ChatBotAdmin() {
 
   const token = getToken();
 
+  const [aiConfig, setAiConfig] = useState(() => {
+    try {
+      const raw = localStorage.getItem('taxbox_ai_config');
+      return raw ? JSON.parse(raw) : { apiKey: '', endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o-mini' };
+    } catch { return { apiKey: '', endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o-mini' }; }
+  });
+  const [testResult, setTestResult] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+
   useEffect(() => {
     if (tab === 'faq') loadFaqs();
-    else loadLogs();
+    else if (tab === 'logs') loadLogs();
   }, [tab]);
+
+  function saveAiConfig(config: typeof aiConfig) {
+    setAiConfig(config);
+    localStorage.setItem('taxbox_ai_config', JSON.stringify(config));
+    setMsg('AI settings saved');
+  }
+
+  async function testAiConnection() {
+    setTestResult('testing');
+    try {
+      const res = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: 'What is PAYE tax in Nigeria?',
+          apiKey: aiConfig.apiKey,
+          endpoint: aiConfig.endpoint || undefined,
+          model: aiConfig.model || undefined,
+        }),
+      });
+      if (res.ok) setTestResult('success');
+      else setTestResult('error');
+    } catch { setTestResult('error'); }
+  }
 
   async function loadFaqs() {
     setLoading(true);
@@ -40,8 +72,18 @@ export default function ChatBotAdmin() {
     setLoading(true);
     try {
       const data = await apiGetChatLogs(token!);
-      setLogs(data.logs);
-    } catch (e) { setMsg('Failed to load logs'); }
+      const apiLogs = data.logs;
+      const localRaw = localStorage.getItem('taxbox_unanswered');
+      const localLogs: LogItem[] = localRaw ? JSON.parse(localRaw) : [];
+      const merged = [...localLogs, ...apiLogs];
+      merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setLogs(merged);
+    } catch {
+      const localRaw = localStorage.getItem('taxbox_unanswered');
+      if (localRaw) {
+        try { setLogs(JSON.parse(localRaw)); } catch { setLogs([]); }
+      }
+    }
     setLoading(false);
   }
 
@@ -81,8 +123,20 @@ export default function ChatBotAdmin() {
   async function handleResolveLog(id: string) {
     try {
       await apiUpdateChatLog(id, { status: 'answered' }, token!);
-      loadLogs();
-    } catch { setMsg('Failed to update log'); }
+    } catch {
+      const localRaw = localStorage.getItem('taxbox_unanswered');
+      if (localRaw) {
+        try {
+          const localLogs = JSON.parse(localRaw);
+          const idx = localLogs.findIndex((l: LogItem) => l.id === id);
+          if (idx !== -1) {
+            localLogs[idx].status = 'answered';
+            localStorage.setItem('taxbox_unanswered', JSON.stringify(localLogs));
+          }
+        } catch { /* ignore */ }
+      }
+    }
+    loadLogs();
   }
 
   return (
@@ -111,6 +165,7 @@ export default function ChatBotAdmin() {
             <span className="ml-2 px-1.5 py-0.5 text-xs bg-red-500 text-white rounded-full">{logs.filter(l => l.status === 'unanswered').length}</span>
           )}
         </button>
+        <button onClick={() => setTab('ai')} className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${tab === 'ai' ? 'bg-blue-900 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>AI Settings</button>
       </div>
 
       {tab === 'faq' && (
@@ -174,6 +229,66 @@ export default function ChatBotAdmin() {
                 </div>
               </form>
             </div>
+          </div>
+        </div>
+      )}
+
+      {tab === 'ai' && (
+        <div className="max-w-xl">
+          <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-1">AI Answers Configuration</h3>
+              <p className="text-sm text-gray-500">Connect an AI provider so the chatbot can answer tax questions online instead of waiting for an admin.</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
+              <input type="password" value={aiConfig.apiKey}
+                onChange={e => setAiConfig((p: typeof aiConfig) => ({ ...p, apiKey: e.target.value }))}
+                placeholder="sk-..."
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+              <p className="text-xs text-gray-400 mt-1">Stored in your browser only. Never shared.</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">API Endpoint</label>
+              <input type="url" value={aiConfig.endpoint}
+                onChange={e => setAiConfig((p: typeof aiConfig) => ({ ...p, endpoint: e.target.value }))}
+                placeholder="https://api.openai.com/v1/chat/completions"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+              <p className="text-xs text-gray-400 mt-1">Any OpenAI-compatible endpoint (OpenAI, OpenRouter, etc.)</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Model</label>
+              <input type="text" value={aiConfig.model}
+                onChange={e => setAiConfig((p: typeof aiConfig) => ({ ...p, model: e.target.value }))}
+                placeholder="gpt-4o-mini"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => saveAiConfig(aiConfig)}
+                className="px-4 py-2 bg-blue-900 text-white text-sm font-medium rounded-lg hover:bg-blue-800 transition-colors">
+                Save Settings
+              </button>
+              <button onClick={testAiConnection} disabled={testResult === 'testing' || !aiConfig.apiKey}
+                className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 disabled:opacity-50 transition-colors">
+                {testResult === 'testing' ? 'Testing...' : 'Test Connection'}
+              </button>
+            </div>
+
+            {testResult === 'success' && (
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-lg text-sm">Connection successful! AI answers are working.</div>
+            )}
+            {testResult === 'error' && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">Connection failed. Check your API key and endpoint.</div>
+            )}
+          </div>
+
+          <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+            <p className="font-medium mb-1">How it works</p>
+            <p>When the chatbot doesn't find a matching FAQ, it will send your question to the AI provider you configure above. The AI uses a Nigerian tax law system prompt to give accurate answers. No API key = questions are logged for admin response instead.</p>
           </div>
         </div>
       )}

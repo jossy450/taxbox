@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { getToken, apiChatAsk } from '../../api';
+import { apiChatAsk } from '../../api';
+import { defaultFaq } from '../../data/faq';
+import type { FaqEntry } from '../../data/faq';
 
 interface Message {
   role: 'user' | 'bot';
@@ -21,6 +23,81 @@ function getStoredUser() {
   } catch { return null; }
 }
 
+function normalize(s: string) {
+  return s.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function tokenize(s: string) {
+  return normalize(s).split(' ').filter(w => w.length > 2);
+}
+
+function scoreQuestion(input: string, faq: FaqEntry) {
+  const inTokens = tokenize(input);
+  if (inTokens.length === 0) return 0;
+  const faqTokens = tokenize(faq.question);
+  const matchCount = inTokens.filter(t => faqTokens.includes(t)).length;
+  return matchCount / Math.max(inTokens.length, faqTokens.length);
+}
+
+function findBestMatch(input: string, faqs: FaqEntry[]) {
+  let best: FaqEntry | null = null;
+  let bestScore = 0;
+  for (const faq of faqs) {
+    const s = scoreQuestion(input, faq);
+    if (s > bestScore) {
+      bestScore = s;
+      best = faq;
+    }
+  }
+  return bestScore >= 0.3 ? best : null;
+}
+
+function logUnanswered(question: string, contact: { name: string; email: string; phone: string }) {
+  try {
+    const stored = JSON.parse(localStorage.getItem('taxbox_unanswered') || '[]');
+    stored.push({
+      id: Date.now().toString(),
+      question,
+      contact_name: contact.name,
+      contact_email: contact.email,
+      contact_phone: contact.phone,
+      status: 'unanswered',
+      created_at: new Date().toISOString(),
+    });
+    localStorage.setItem('taxbox_unanswered', JSON.stringify(stored));
+  } catch { /* ignore */ }
+}
+
+function getAiConfig() {
+  try {
+    const raw = localStorage.getItem('taxbox_ai_config');
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+async function askAi(question: string): Promise<string | null> {
+  const config = getAiConfig();
+  if (!config?.apiKey) return null;
+
+  try {
+    const res = await fetch('/api/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question,
+        apiKey: config.apiKey,
+        endpoint: config.endpoint || undefined,
+        model: config.model || undefined,
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.answer || null;
+  } catch {
+    return null;
+  }
+}
+
 export default function ChatBot() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
@@ -31,9 +108,8 @@ export default function ChatBot() {
   const listRef = useRef<HTMLDivElement>(null);
 
   const storedUser = getStoredUser();
-  const token = getToken();
   const [contact, setContact] = useState<{ name: string; email: string; phone: string }>(() => getStoredContact() || { name: storedUser?.name || '', email: storedUser?.email || '', phone: '' });
-  const [showContactForm, setShowContactForm] = useState(!token && !getStoredContact());
+  const [showContactForm, setShowContactForm] = useState(!getStoredContact() && !storedUser);
 
   useEffect(() => {
     if (listRef.current) {
@@ -58,22 +134,31 @@ export default function ChatBot() {
     setInput('');
     setLoading(true);
 
-    if (!token) {
-      setMessages(prev => [...prev, { role: 'bot', text: 'Please provide your name and contact details first.' }]);
+    const c = { name: contact.name || storedUser?.name || '', email: contact.email || storedUser?.email || '', phone: contact.phone || '' };
+
+    if (!c.name && !c.email) {
+      setMessages(prev => [...prev, { role: 'bot', text: 'Please provide your name and email first.' }]);
       setShowContactForm(true);
       setLoading(false);
       return;
     }
 
     try {
-      const data = await apiChatAsk(q, token, {
-        name: contact.name || storedUser?.name,
-        email: contact.email || storedUser?.email,
-        phone: contact.phone,
-      });
+      const data = await apiChatAsk(q, null, c);
       setMessages(prev => [...prev, { role: 'bot', text: data.answer }]);
     } catch {
-      setMessages(prev => [...prev, { role: 'bot', text: 'Sorry, something went wrong. Please try again.' }]);
+      const match = findBestMatch(q, defaultFaq);
+      if (match) {
+        setMessages(prev => [...prev, { role: 'bot', text: match.answer }]);
+      } else {
+        const aiAnswer = await askAi(q);
+        if (aiAnswer) {
+          setMessages(prev => [...prev, { role: 'bot', text: aiAnswer }]);
+        } else {
+          logUnanswered(q, c);
+          setMessages(prev => [...prev, { role: 'bot', text: "I don't have an answer for that yet. Your question has been logged and an admin will respond soon." }]);
+        }
+      }
     } finally {
       setLoading(false);
     }

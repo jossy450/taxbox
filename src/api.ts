@@ -68,8 +68,8 @@ export async function apiResetPassword(token: string, password: string) {
   return request('POST', '/password/reset', { token, password });
 }
 
-export async function apiChatAsk(question: string, token: string, contact?: { name?: string; email?: string; phone?: string }) {
-  return request('POST', '/chatbot/ask', { question, ...contact }, token);
+export async function apiChatAsk(question: string, token: string | null, contact?: { name?: string; email?: string; phone?: string }) {
+  return request('POST', '/chatbot/ask', { question, ...contact }, token ?? undefined);
 }
 
 export async function apiGetFaqs(token: string) {
