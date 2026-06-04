@@ -2,13 +2,15 @@ import { useState } from 'react'
 import PersonaA from './PersonaA'
 import PersonaB from './PersonaB'
 import PersonaC from './PersonaC'
+import OldRegimeCalculator from './OldRegimeCalculator'
 
-type Tab = 'individual' | 'corporate' | 'consultant'
+type Tab = 'individual' | 'corporate' | 'consultant' | 'oldPita'
 
 const TABS: { key: Tab; label: string; desc: string }[] = [
   { key: 'individual', label: 'Individual Taxpayer', desc: 'Quick check & reverse calculator' },
   { key: 'corporate', label: 'Company Payroll', desc: 'Batch processing & LIRS schedules' },
   { key: 'consultant', label: 'Tax Consultant', desc: 'Audit, comparison & optimisation' },
+  { key: 'oldPita', label: 'Old PITA Regime', desc: 'Pre-2026 calculator & gross-up' },
 ]
 
 export default function Dashboard() {
@@ -57,6 +59,7 @@ export default function Dashboard() {
           {activeTab === 'individual' && <PersonaA />}
           {activeTab === 'corporate' && <PersonaB />}
           {activeTab === 'consultant' && <PersonaC />}
+          {activeTab === 'oldPita' && <OldRegimeCalculator />}
         </main>
       </div>
 

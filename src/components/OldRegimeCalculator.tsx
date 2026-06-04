@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { calculateLagosPaye2026, getDefaultDeductions } from '../engine/calculator'
-import type { GrossIncome, PayeResult, RentInfo, PreTaxDeductions } from '../engine/types'
+import { calculateOldRegime, getDefaultDeductions } from '../engine/calculator'
+import type { GrossIncome, PayeResult, PreTaxDeductions } from '../engine/types'
 import TaxChart, { formatNaira } from './TaxChart'
-import { grossUpTargetNetPay } from '../engine/grossUp'
+import { grossUpOldRegime } from '../engine/grossUpOld'
 
 const emptyIncome: GrossIncome = {
   basic: 0, housing: 0, transport: 0, utility: 0,
@@ -12,35 +12,32 @@ const emptyIncome: GrossIncome = {
 
 type Direction = 'incomeToTax' | 'taxToIncome';
 
-export default function PersonaA() {
+export default function OldRegimeCalculator() {
   const [direction, setDirection] = useState<Direction>('incomeToTax');
   const [income, setIncome] = useState<GrossIncome>({ ...emptyIncome, basic: 300_000, housing: 75_000, transport: 50_000 })
-  const [annualRent, setAnnualRent] = useState(600_000)
-  const [hasReceipt, setHasReceipt] = useState(true)
-  const [result, setResult] = useState<PayeResult | null>(null)
   const [targetNet, setTargetNet] = useState('500000')
-  const [reverseResult, setReverseResult] = useState<ReturnType<typeof grossUpTargetNetPay> | null>(null)
+  const [result, setResult] = useState<PayeResult | null>(null)
+  const [reverseResult, setReverseResult] = useState<ReturnType<typeof grossUpOldRegime> | null>(null)
 
   function updateField(field: keyof GrossIncome, value: string) {
     setIncome(prev => ({ ...prev, [field]: parseFloat(value) || 0 }))
   }
 
-  function handleCalculate() {
+  function handleCalculateForward() {
     const deductions: PreTaxDeductions = getDefaultDeductions()
-    const rent: RentInfo = { annualRentPaid: annualRent, hasRentReceipt: hasReceipt }
-    setResult(calculateLagosPaye2026({ grossIncome: income, deductions, rent }, true))
+    setResult(calculateOldRegime({ grossIncome: income, deductions, rent: { annualRentPaid: 0, hasRentReceipt: false } }, true))
   }
 
   function handleCalculateReverse() {
     const annual = parseFloat(targetNet) * 12
     if (!annual) return
-    setReverseResult(grossUpTargetNetPay(annual))
+    setReverseResult(grossUpOldRegime(annual))
   }
 
   const chartData = result
     ? ([
         { name: 'Net Pay', value: result.monthly.netPay },
-        { name: 'PAYE Tax', value: result.monthly.taxDeducted },
+        { name: 'PITA Tax', value: result.monthly.taxDeducted },
         { name: 'Pension', value: result.statutoryDeductions.pension / 12 },
         { name: 'NHF', value: result.statutoryDeductions.nhf / 12 },
         { name: 'NHIS', value: result.statutoryDeductions.nhis / 12 },
@@ -51,7 +48,7 @@ export default function PersonaA() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-900">2026 PAYE Calculator</h2>
+        <h2 className="text-xl font-bold text-gray-900">Old PITA Regime Calculator</h2>
         <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
           <button onClick={() => { setDirection('incomeToTax'); setReverseResult(null); }}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${direction === 'incomeToTax' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
@@ -94,38 +91,16 @@ export default function PersonaA() {
                 ))}
               </div>
 
-              <div className="mt-6 pt-4 border-t border-gray-200">
-                <h4 className="font-semibold text-gray-900 mb-3">Rent Relief Allowance (RRA)</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Annual Rent Paid</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">₦</span>
-                      <input type="number" value={annualRent || ''}
-                        onChange={e => setAnnualRent(parseFloat(e.target.value) || 0)}
-                        className="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                  </div>
-                  <div className="flex items-end pb-2">
-                    <label className="flex items-center gap-2 text-sm text-gray-700">
-                      <input type="checkbox" checked={hasReceipt} onChange={e => setHasReceipt(e.target.checked)}
-                        className="rounded border-gray-300" />
-                      I have rent receipts
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              <button onClick={handleCalculate}
+              <button onClick={handleCalculateForward}
                 className="mt-6 w-full py-3 bg-blue-900 text-white font-medium rounded-lg hover:bg-blue-800 transition-colors">
-                Calculate My PAYE
+                Calculate My PITA
               </button>
             </>
           ) : (
             <>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Reverse Calculator (Gross-Up)</h3>
               <p className="text-sm text-gray-600 mb-4">
-                Enter your desired monthly take-home pay to find the required gross salary under the 2026 regime.
+                Enter your desired monthly take-home pay to find the required gross salary under the old PITA regime.
               </p>
               <div className="flex items-end gap-3">
                 <div className="flex-1">
@@ -186,6 +161,10 @@ export default function PersonaA() {
                   <p className="print-font-bold text-amber-700">{(result.effectiveTaxRate * 100).toFixed(1)}%</p>
                 </div>
               </div>
+              <div className="print-card bg-purple-50 rounded-lg p-3">
+                <p className="print-text-sm text-purple-700">CRA Deducted</p>
+                <p className="print-font-bold text-purple-900">{formatNaira(result.rentRelief)}</p>
+              </div>
               <TaxChart data={chartData} />
               <details className="text-xs text-gray-500">
                 <summary className="cursor-pointer">View bracket breakdown</summary>
@@ -213,6 +192,10 @@ export default function PersonaA() {
                 <div className="print-card bg-red-50 rounded-lg p-3">
                   <p className="print-text-sm text-red-600">Monthly Tax</p>
                   <p className="print-font-bold text-red-700">{formatNaira(reverseResult.result.monthly.taxDeducted)}</p>
+                </div>
+                <div className="print-card bg-purple-50 rounded-lg p-3">
+                  <p className="print-text-sm text-purple-700">CRA Deducted</p>
+                  <p className="print-font-bold text-purple-900">{formatNaira(reverseResult.result.rentRelief)}</p>
                 </div>
                 <div className="print-card bg-amber-50 rounded-lg p-3">
                   <p className="print-text-sm text-amber-600">Tax Rate</p>
