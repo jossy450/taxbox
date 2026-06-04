@@ -1,20 +1,59 @@
-import { useState, useEffect } from 'react';
-import { getToken, apiGetFaqs, apiCreateFaq, apiUpdateFaq, apiDeleteFaq, apiGetChatLogs, apiUpdateChatLog, apiSeedFaqs } from '../../api';
+import { useState } from 'react';
 import { defaultFaq } from '../../data/faq';
 
 interface FaqItem { id: string; question: string; answer: string; category: string; }
 interface LogItem { id: string; question: string; answer: string | null; contact_name: string | null; contact_email: string | null; contact_phone: string | null; status: string; created_at: string; }
 
+const LOCAL_FAQ_KEY = 'taxbox_faqs';
+
+function getLocalFaqs(): FaqItem[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_FAQ_KEY);
+    return raw ? JSON.parse(raw) : defaultFaq;
+  } catch { return defaultFaq; }
+}
+
+function saveLocalFaqs(faqs: FaqItem[]) {
+  localStorage.setItem(LOCAL_FAQ_KEY, JSON.stringify(faqs));
+}
+
+function getLocalLogs(): LogItem[] {
+  try {
+    const raw = localStorage.getItem('taxbox_unanswered');
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveLocalLogs(logs: LogItem[]) {
+  localStorage.setItem('taxbox_unanswered', JSON.stringify(logs));
+}
+
+function exportCsv() {
+  const logs = getLocalLogs().filter(l => l.status === 'unanswered');
+  const header = 'Question,Contact Name,Contact Email,Contact Phone,Status,Asked At\n';
+  const csv = header + logs.map(r => {
+    const q = `"${(r.question || '').replace(/"/g, '""')}"`;
+    const n = `"${(r.contact_name || '').replace(/"/g, '""')}"`;
+    const e = `"${(r.contact_email || '').replace(/"/g, '""')}"`;
+    const p = `"${(r.contact_phone || '').replace(/"/g, '""')}"`;
+    return `${q},${n},${e},${p},${r.status},${r.created_at}`;
+  }).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'chatbot_unanswered_questions.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function ChatBotAdmin() {
   const [tab, setTab] = useState<'faq' | 'logs' | 'ai'>('faq');
-  const [faqs, setFaqs] = useState<FaqItem[]>([]);
-  const [logs, setLogs] = useState<LogItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [faqs, setFaqs] = useState<FaqItem[]>(() => getLocalFaqs());
+  const [logs, setLogs] = useState<LogItem[]>(() => getLocalLogs());
   const [editing, setEditing] = useState<FaqItem | null>(null);
   const [form, setForm] = useState({ question: '', answer: '', category: 'general' });
   const [msg, setMsg] = useState('');
-
-  const token = getToken();
 
   const [aiConfig, setAiConfig] = useState(() => {
     try {
@@ -23,11 +62,6 @@ export default function ChatBotAdmin() {
     } catch { return { apiKey: '', endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o-mini' }; }
   });
   const [testResult, setTestResult] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
-
-  useEffect(() => {
-    if (tab === 'faq') loadFaqs();
-    else if (tab === 'logs') loadLogs();
-  }, [tab]);
 
   function saveAiConfig(config: typeof aiConfig) {
     setAiConfig(config);
@@ -48,58 +82,27 @@ export default function ChatBotAdmin() {
           model: aiConfig.model || undefined,
         }),
       });
-      if (res.ok) setTestResult('success');
-      else setTestResult('error');
+      setTestResult(res.ok ? 'success' : 'error');
     } catch { setTestResult('error'); }
   }
 
-  async function loadFaqs() {
-    setLoading(true);
-    try {
-      const data = await apiGetFaqs(token!);
-      if (data.faqs.length === 0) {
-        await apiSeedFaqs(defaultFaq, token!);
-        const refetched = await apiGetFaqs(token!);
-        setFaqs(refetched.faqs);
-      } else {
-        setFaqs(data.faqs);
-      }
-    } catch (e) { setMsg('Failed to load FAQs'); }
-    setLoading(false);
-  }
-
-  async function loadLogs() {
-    setLoading(true);
-    try {
-      const data = await apiGetChatLogs(token!);
-      const apiLogs = data.logs;
-      const localRaw = localStorage.getItem('taxbox_unanswered');
-      const localLogs: LogItem[] = localRaw ? JSON.parse(localRaw) : [];
-      const merged = [...localLogs, ...apiLogs];
-      merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      setLogs(merged);
-    } catch {
-      const localRaw = localStorage.getItem('taxbox_unanswered');
-      if (localRaw) {
-        try { setLogs(JSON.parse(localRaw)); } catch { setLogs([]); }
-      }
-    }
-    setLoading(false);
-  }
-
-  async function handleSave(e: React.FormEvent) {
+  function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    try {
-      if (editing) {
-        await apiUpdateFaq(editing.id, form, token!);
-      } else {
-        await apiCreateFaq(form, token!);
-      }
-      setEditing(null);
-      setForm({ question: '', answer: '', category: 'general' });
-      setMsg('FAQ saved');
-      loadFaqs();
-    } catch { setMsg('Failed to save FAQ'); }
+    if (!form.question || !form.answer) return;
+    if (editing) {
+      const updated = faqs.map(f => f.id === editing.id ? { ...f, ...form } : f);
+      setFaqs(updated);
+      saveLocalFaqs(updated);
+      setMsg('FAQ updated');
+    } else {
+      const newFaq: FaqItem = { id: Date.now().toString(), ...form };
+      const updated = [...faqs, newFaq];
+      setFaqs(updated);
+      saveLocalFaqs(updated);
+      setMsg('FAQ added');
+    }
+    setEditing(null);
+    setForm({ question: '', answer: '', category: 'general' });
   }
 
   function handleEdit(faq: FaqItem) {
@@ -107,12 +110,11 @@ export default function ChatBotAdmin() {
     setForm({ question: faq.question, answer: faq.answer, category: faq.category });
   }
 
-  async function handleDelete(id: string) {
-    try {
-      await apiDeleteFaq(id, token!);
-      setMsg('FAQ deleted');
-      loadFaqs();
-    } catch { setMsg('Failed to delete FAQ'); }
+  function handleDelete(id: string) {
+    const updated = faqs.filter(f => f.id !== id);
+    setFaqs(updated);
+    saveLocalFaqs(updated);
+    setMsg('FAQ deleted');
   }
 
   function handleCancel() {
@@ -120,37 +122,21 @@ export default function ChatBotAdmin() {
     setForm({ question: '', answer: '', category: 'general' });
   }
 
-  async function handleResolveLog(id: string) {
-    try {
-      await apiUpdateChatLog(id, { status: 'answered' }, token!);
-    } catch {
-      const localRaw = localStorage.getItem('taxbox_unanswered');
-      if (localRaw) {
-        try {
-          const localLogs = JSON.parse(localRaw);
-          const idx = localLogs.findIndex((l: LogItem) => l.id === id);
-          if (idx !== -1) {
-            localLogs[idx].status = 'answered';
-            localStorage.setItem('taxbox_unanswered', JSON.stringify(localLogs));
-          }
-        } catch { /* ignore */ }
-      }
-    }
-    loadLogs();
+  function handleResolveLog(id: string) {
+    const updated = logs.map(l => l.id === id ? { ...l, status: 'answered' as const } : l);
+    setLogs(updated);
+    saveLocalLogs(updated);
+    setMsg('Marked as answered');
   }
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Chatbot Management</h1>
-        <a
-          href="/api/chatbot/logs/export"
-          download
-          className="px-4 py-2 bg-emerald-700 text-white text-sm font-medium rounded-lg hover:bg-emerald-600 transition-colors"
-          onClick={e => { e.preventDefault(); window.open('/api/chatbot/logs/export', '_blank'); }}
-        >
+        <button onClick={exportCsv}
+          className="px-4 py-2 bg-emerald-700 text-white text-sm font-medium rounded-lg hover:bg-emerald-600 transition-colors">
           Export Unanswered (CSV)
-        </a>
+        </button>
       </div>
 
       {msg && (
@@ -171,9 +157,7 @@ export default function ChatBotAdmin() {
       {tab === 'faq' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-3">
-            {loading ? (
-              <p className="text-gray-500">Loading...</p>
-            ) : faqs.length === 0 ? (
+            {faqs.length === 0 ? (
               <p className="text-gray-500">No FAQ entries yet. Add one using the form.</p>
             ) : (
               faqs.map(faq => (
@@ -295,10 +279,8 @@ export default function ChatBotAdmin() {
 
       {tab === 'logs' && (
         <div>
-          {loading ? (
-            <p className="text-gray-500">Loading...</p>
-          ) : logs.length === 0 ? (
-            <p className="text-gray-500">No unanswered questions yet.</p>
+          {logs.length === 0 ? (
+            <p className="text-gray-500">No questions yet.</p>
           ) : (
             <div className="space-y-3">
               {logs.map(log => (
