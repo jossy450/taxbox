@@ -22,7 +22,8 @@ export default function PersonaA() {
   const [reverseResult, setReverseResult] = useState<ReturnType<typeof grossUpTargetNetPay> | null>(null)
 
   function updateField(field: keyof GrossIncome, value: string) {
-    setIncome(prev => ({ ...prev, [field]: parseFloat(value) || 0 }))
+    const num = parseFloat(value)
+    setIncome(prev => ({ ...prev, [field]: !isNaN(num) && num >= 0 ? num : 0 }))
   }
 
   function handleCalculate() {
