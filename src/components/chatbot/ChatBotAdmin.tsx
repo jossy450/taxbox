@@ -62,6 +62,7 @@ export default function ChatBotAdmin() {
     } catch { return { apiKey: '', endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o-mini' }; }
   });
   const [testResult, setTestResult] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [testError, setTestError] = useState('');
 
   function saveAiConfig(config: typeof aiConfig) {
     setAiConfig(config);
@@ -71,6 +72,7 @@ export default function ChatBotAdmin() {
 
   async function testAiConnection() {
     setTestResult('testing');
+    setTestError('');
     try {
       const res = await fetch('/api/ai', {
         method: 'POST',
@@ -82,8 +84,17 @@ export default function ChatBotAdmin() {
           model: aiConfig.model || undefined,
         }),
       });
-      setTestResult(res.ok ? 'success' : 'error');
-    } catch { setTestResult('error'); }
+      if (res.ok) {
+        setTestResult('success');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setTestError(data.error || `HTTP ${res.status}`);
+        setTestResult('error');
+      }
+    } catch {
+      setTestError('Network error — cannot reach server');
+      setTestResult('error');
+    }
   }
 
   function handleSave(e: React.FormEvent) {
@@ -266,7 +277,9 @@ export default function ChatBotAdmin() {
               <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-lg text-sm">Connection successful! AI answers are working.</div>
             )}
             {testResult === 'error' && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">Connection failed. Check your API key and endpoint.</div>
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                Connection failed: {testError || 'Check your API key and endpoint'}
+              </div>
             )}
           </div>
 

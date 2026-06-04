@@ -33,16 +33,24 @@ export default async function handler(req, res) {
     });
   }
 
-  const url = endpoint || DEFAULT_ENDPOINT;
+  const url = (endpoint || DEFAULT_ENDPOINT).replace(/\/+$/, '');
   const aiModel = model || DEFAULT_MODEL;
 
   try {
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    };
+
+    // OpenRouter needs referer headers
+    if (url.includes('openrouter')) {
+      headers['HTTP-Referer'] = 'https://taxbox-two.vercel.app';
+      headers['X-Title'] = 'TaxBox NG';
+    }
+
     const aiRes = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
+      headers,
       body: JSON.stringify({
         model: aiModel,
         messages: [
@@ -56,8 +64,12 @@ export default async function handler(req, res) {
 
     if (!aiRes.ok) {
       const errText = await aiRes.text();
-      console.error('AI API error:', aiRes.status, errText);
-      return res.status(502).json({ error: `AI API returned ${aiRes.status}` });
+      let detail = '';
+      try {
+        const errJson = JSON.parse(errText);
+        detail = errJson.error?.message || errJson.error || '';
+      } catch { detail = errText.slice(0, 300); }
+      return res.status(502).json({ error: `AI API error (${aiRes.status}): ${detail}` });
     }
 
     const data = await aiRes.json();
@@ -68,7 +80,6 @@ export default async function handler(req, res) {
 
     return res.json({ answer, source: 'ai' });
   } catch (err) {
-    console.error('AI proxy error:', err);
-    return res.status(502).json({ error: 'Failed to reach AI API' });
+    return res.status(502).json({ error: `Failed to reach AI API: ${err.message}` });
   }
 }
