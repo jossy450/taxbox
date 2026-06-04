@@ -33,7 +33,8 @@ export default function TaxChart({ data }: TaxChartProps) {
             ))}
           </Pie>
           <Tooltip formatter={(v: any) => `₦${Number(v).toLocaleString()}`} />
-          <Legend />
+          <Legend layout="vertical" verticalAlign="bottom" align="center"
+            wrapperStyle={{ fontSize: '11px', paddingTop: '12px' }} />
         </PieChart>
       </ResponsiveContainer>
     </div>

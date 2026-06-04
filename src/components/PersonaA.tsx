@@ -193,14 +193,60 @@ export default function PersonaA() {
               </div>
               <TaxChart data={chartData} />
               <details className="text-xs text-gray-500">
-                <summary className="cursor-pointer">View bracket breakdown</summary>
-                <div className="mt-2 space-y-1">
+                <summary className="cursor-pointer">View computation breakdown</summary>
+                <div className="mt-2 space-y-1.5">
+                  <div className="flex justify-between font-medium text-gray-700">
+                    <span>Annual Gross Income</span>
+                    <span>{formatNaira(result.grossIncome)}</span>
+                  </div>
+                  <div className="border-t border-gray-100" />
+                  <div className="flex justify-between text-gray-600">
+                    <span>Less: Pension (8% of BHT)</span>
+                    <span>-{formatNaira(result.statutoryDeductions.pension)}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-600">
+                    <span>Less: NHF (2.5% of basic)</span>
+                    <span>-{formatNaira(result.statutoryDeductions.nhf)}</span>
+                  </div>
+                  {result.statutoryDeductions.nhis > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Less: NHIS</span>
+                      <span>-{formatNaira(result.statutoryDeductions.nhis)}</span>
+                    </div>
+                  )}
+                  {result.statutoryDeductions.lifeAssurance > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Less: Life Assurance</span>
+                      <span>-{formatNaira(result.statutoryDeductions.lifeAssurance)}</span>
+                    </div>
+                  )}
+                  {result.rentRelief > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Less: Rent Relief</span>
+                      <span>-{formatNaira(result.rentRelief)}</span>
+                    </div>
+                  )}
+                  <div className="border-t border-gray-200" />
+                  <div className="flex justify-between font-medium text-gray-800">
+                    <span>Chargeable Income</span>
+                    <span>{formatNaira(result.chargeableIncome)}</span>
+                  </div>
+                  <div className="border-t border-gray-100" />
                   {result.taxBrackets.map((b, i) => (
-                    <div key={i} className="flex justify-between">
-                      <span>{b.label} @ {(b.rate * 100).toFixed(0)}%</span>
+                    <div key={i} className="flex justify-between text-gray-600">
+                      <span className="pl-2">{b.label} @ {(b.rate * 100).toFixed(0)}%</span>
                       <span>{formatNaira(b.taxInBand)}</span>
                     </div>
                   ))}
+                  <div className="border-t border-gray-200" />
+                  <div className="flex justify-between font-semibold text-red-700">
+                    <span>Annual Tax Due</span>
+                    <span>{formatNaira(result.totalTax)}</span>
+                  </div>
+                  <div className="flex justify-between font-semibold text-blue-700">
+                    <span>Monthly Tax Due</span>
+                    <span>{formatNaira(result.monthly.taxDeducted)}</span>
+                  </div>
                 </div>
               </details>
             </div>
