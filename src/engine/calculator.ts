@@ -146,7 +146,7 @@ function craForOldRegime(grossIncome: number): number {
   const net = grossIncome - pension;
   if (net <= 300_000) return 0;
   if (net >= 20_000_000) return net * 0.21;
-  return grossIncome * 0.2 + 200_000;
+  return net * 0.2 + 200_000;
 }
 
 export function calculateOldRegime(
