@@ -141,6 +141,14 @@ export function calculateOldPita(chargeableIncome: number): { totalTax: number; 
   return { totalTax, brackets };
 }
 
+function craForOldRegime(grossIncome: number): number {
+  const pension = grossIncome * 0.08;
+  const net = grossIncome - pension;
+  if (net <= 300_000) return 0;
+  if (net >= 20_000_000) return net * 0.21;
+  return grossIncome * 0.2 + 200_000;
+}
+
 export function calculateOldRegime(
   input: PayeInput,
   isMonthly: boolean = true,
@@ -156,31 +164,31 @@ export function calculateOldRegime(
     + annualize(input.grossIncome.commission, isMonthly)
     + annualize(input.grossIncome.otherAllowances, isMonthly);
 
-  const statutoryDeductions = computeStatutoryDeductions(input.grossIncome, input.deductions, isMonthly);
-  const incomeAfterStatutoryDeductions = grossIncome - statutoryDeductions.total;
+  const pension = grossIncome * 0.08;
+  const cra = craForOldRegime(grossIncome);
+  const chargeableIncome = Math.max(0, grossIncome - pension - cra);
 
-  const cra = Math.max(200_000, 0.01 * grossIncome) + 0.2 * grossIncome;
-  const chargeableIncome = Math.max(0, incomeAfterStatutoryDeductions - cra);
+  const isMinimumTax = cra === 0 || chargeableIncome <= 0;
+  const totalTax = isMinimumTax ? Math.max(0, grossIncome * 0.01) : calculateOldPita(chargeableIncome).totalTax;
 
-  const oldResult = calculateOldPita(chargeableIncome);
-  const totalTax = oldResult.totalTax;
+  const totalDeductions = pension + totalTax;
   const effectiveTaxRate = chargeableIncome > 0 ? totalTax / chargeableIncome : 0;
-  const netIncome = grossIncome - statutoryDeductions.total - totalTax;
+  const netIncome = grossIncome - totalDeductions;
 
   const monthly: MonthlyBreakdown = {
     grossPay: grossIncome / 12,
-    totalDeductions: (statutoryDeductions.total + totalTax) / 12,
+    totalDeductions: totalDeductions / 12,
     taxDeducted: totalTax / 12,
     netPay: netIncome / 12,
   };
 
   return {
     grossIncome,
-    statutoryDeductions,
-    incomeAfterStatutoryDeductions,
+    statutoryDeductions: { nhf: 0, nhis: 0, pension, lifeAssurance: 0, total: pension },
+    incomeAfterStatutoryDeductions: grossIncome - pension,
     rentRelief: cra,
     chargeableIncome,
-    taxBrackets: oldResult.brackets,
+    taxBrackets: isMinimumTax ? [] : calculateOldPita(chargeableIncome).brackets,
     totalTax,
     effectiveTaxRate,
     netIncome,
