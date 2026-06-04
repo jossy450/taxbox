@@ -159,7 +159,7 @@ export function calculateOldRegime(
   const statutoryDeductions = computeStatutoryDeductions(input.grossIncome, input.deductions, isMonthly);
   const incomeAfterStatutoryDeductions = grossIncome - statutoryDeductions.total;
 
-  const cra = Math.max(200_000, 0.2 * grossIncome);
+  const cra = Math.max(200_000, 0.01 * grossIncome) + 0.2 * grossIncome;
   const chargeableIncome = Math.max(0, incomeAfterStatutoryDeductions - cra);
 
   const oldResult = calculateOldPita(chargeableIncome);

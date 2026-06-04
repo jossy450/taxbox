@@ -182,8 +182,12 @@ export default function PersonaA() {
                   <p className="print-font-bold text-emerald-700">{formatNaira(result.netIncome)}</p>
                 </div>
                 <div className="print-card bg-amber-50 rounded-lg p-3">
-                  <p className="print-text-sm text-amber-600">Tax Rate</p>
+                  <p className="print-text-sm text-amber-600">Effective Tax Rate</p>
                   <p className="print-font-bold text-amber-700">{(result.effectiveTaxRate * 100).toFixed(1)}%</p>
+                </div>
+                <div className="print-card bg-red-50 rounded-lg p-3">
+                  <p className="print-text-sm text-red-600">Annual Tax Due</p>
+                  <p className="print-font-bold text-red-700">{formatNaira(result.totalTax)}</p>
                 </div>
               </div>
               <TaxChart data={chartData} />
@@ -215,8 +219,12 @@ export default function PersonaA() {
                   <p className="print-font-bold text-red-700">{formatNaira(reverseResult.result.monthly.taxDeducted)}</p>
                 </div>
                 <div className="print-card bg-amber-50 rounded-lg p-3">
-                  <p className="print-text-sm text-amber-600">Tax Rate</p>
+                  <p className="print-text-sm text-amber-600">Effective Tax Rate</p>
                   <p className="print-font-bold text-amber-700">{(reverseResult.result.effectiveTaxRate * 100).toFixed(1)}%</p>
+                </div>
+                <div className="print-card bg-red-50 rounded-lg p-3">
+                  <p className="print-text-sm text-red-600">Annual Tax Due</p>
+                  <p className="print-font-bold text-red-700">{formatNaira(reverseResult.result.totalTax)}</p>
                 </div>
               </div>
               <details className="text-xs text-gray-500">
