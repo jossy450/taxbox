@@ -1,31 +1,26 @@
 import { useState } from 'react'
-import { calculateOldRegime, getDefaultDeductions } from '../engine/calculator'
-import type { GrossIncome, PayeResult, PreTaxDeductions } from '../engine/types'
+import { calculateOldRegime } from '../engine/calculator'
+import type { PayeResult } from '../engine/types'
 import TaxChart, { formatNaira } from './TaxChart'
 import { grossUpOldRegime } from '../engine/grossUpOld'
-
-const emptyIncome: GrossIncome = {
-  basic: 0, housing: 0, transport: 0, utility: 0,
-  wardrobe: 0, lunch: 0, bonus: 0, thirteenthMonth: 0,
-  commission: 0, otherAllowances: 0,
-};
 
 type Direction = 'incomeToTax' | 'taxToIncome';
 
 export default function OldRegimeCalculator() {
   const [direction, setDirection] = useState<Direction>('incomeToTax');
-  const [income, setIncome] = useState<GrossIncome>({ ...emptyIncome, basic: 300_000, housing: 75_000, transport: 50_000 })
+  const [monthlyGross, setMonthlyGross] = useState('300000')
   const [targetNet, setTargetNet] = useState('500000')
   const [result, setResult] = useState<PayeResult | null>(null)
   const [reverseResult, setReverseResult] = useState<ReturnType<typeof grossUpOldRegime> | null>(null)
 
-  function updateField(field: keyof GrossIncome, value: string) {
-    setIncome(prev => ({ ...prev, [field]: parseFloat(value) || 0 }))
-  }
-
   function handleCalculateForward() {
-    const deductions: PreTaxDeductions = getDefaultDeductions()
-    setResult(calculateOldRegime({ grossIncome: income, deductions, rent: { annualRentPaid: 0, hasRentReceipt: false } }, true))
+    const monthly = parseFloat(monthlyGross) || 0
+    const annual = monthly * 12
+    setResult(calculateOldRegime({
+      grossIncome: { basic: annual, housing: 0, transport: 0, utility: 0, wardrobe: 0, lunch: 0, bonus: 0, thirteenthMonth: 0, commission: 0, otherAllowances: 0 },
+      deductions: { nhfPercentage: 0, nhis: 0, pensionPercentage: 0, lifeAssurance: 0 },
+      rent: { annualRentPaid: 0, hasRentReceipt: false },
+    }, false))
   }
 
   function handleCalculateReverse() {
@@ -39,9 +34,6 @@ export default function OldRegimeCalculator() {
         { name: 'Net Pay', value: result.monthly.netPay },
         { name: 'PITA Tax', value: result.monthly.taxDeducted },
         { name: 'Pension', value: result.statutoryDeductions.pension / 12 },
-        { name: 'NHF', value: result.statutoryDeductions.nhf / 12 },
-        { name: 'NHIS', value: result.statutoryDeductions.nhis / 12 },
-        { name: 'Life Assurance', value: result.statutoryDeductions.lifeAssurance / 12 },
       ] as const).filter(d => d.value > 0) as unknown as { name: string; value: number }[]
     : []
 
@@ -65,36 +57,25 @@ export default function OldRegimeCalculator() {
         <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           {direction === 'incomeToTax' ? (
             <>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Monthly Income Breakdown</h3>
-              <div className="grid grid-cols-2 gap-4">
-                {([
-                  ['Basic Salary', 'basic'],
-                  ['Housing Allowance', 'housing'],
-                  ['Transport Allowance', 'transport'],
-                  ['Utility Allowance', 'utility'],
-                  ['Wardrobe Allowance', 'wardrobe'],
-                  ['Lunch Allowance', 'lunch'],
-                  ['Bonus', 'bonus'],
-                  ['13th Month', 'thirteenthMonth'],
-                  ['Commission', 'commission'],
-                  ['Other Allowances', 'otherAllowances'],
-                ] as const).map(([label, field]) => (
-                  <div key={field}>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">₦</span>
-                      <input type="number" value={income[field] || ''}
-                        onChange={e => updateField(field, e.target.value)}
-                        className="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
-                    </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Monthly Gross Income</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Enter your total monthly gross income (basic + all allowances) to calculate PAYE under the old PITA regime.
+              </p>
+              <div className="flex items-end gap-3">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Total Monthly Gross Income</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">₦</span>
+                    <input type="number" value={monthlyGross}
+                      onChange={e => setMonthlyGross(e.target.value)}
+                      className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
                   </div>
-                ))}
+                </div>
+                <button onClick={handleCalculateForward}
+                  className="px-6 py-2 bg-blue-900 text-white font-medium rounded-lg hover:bg-blue-800 transition-colors">
+                  Calculate My PITA
+                </button>
               </div>
-
-              <button onClick={handleCalculateForward}
-                className="mt-6 w-full py-3 bg-blue-900 text-white font-medium rounded-lg hover:bg-blue-800 transition-colors">
-                Calculate My PITA
-              </button>
             </>
           ) : (
             <>
@@ -166,8 +147,12 @@ export default function OldRegimeCalculator() {
                 </div>
               </div>
               <div className="print-card bg-purple-50 rounded-lg p-3">
-                <p className="print-text-sm text-purple-700">CRA Deducted</p>
-                <p className="print-font-bold text-purple-900">{formatNaira(result.rentRelief)}</p>
+                <p className="print-text-sm text-purple-700">Pension (8%)</p>
+                <p className="print-font-bold text-purple-900">{formatNaira(result.statutoryDeductions.pension)}</p>
+              </div>
+              <div className="print-card bg-indigo-50 rounded-lg p-3">
+                <p className="print-text-sm text-indigo-700">CRA Deducted</p>
+                <p className="print-font-bold text-indigo-900">{formatNaira(result.rentRelief)}</p>
               </div>
               <TaxChart data={chartData} />
               <details className="text-xs text-gray-500">
@@ -227,7 +212,7 @@ export default function OldRegimeCalculator() {
               <p className="text-4xl mb-2">📊</p>
               <p className="text-sm">
                 {direction === 'incomeToTax'
-                  ? 'Enter your income details and click Calculate'
+                  ? 'Enter your gross income and click Calculate'
                   : 'Enter your desired net pay and click Calculate'}
               </p>
             </div>
