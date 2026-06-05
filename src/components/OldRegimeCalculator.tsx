@@ -2,40 +2,50 @@ import { useState } from 'react'
 import { calculateOldRegime } from '../engine/calculator'
 import type { PayeResult } from '../engine/types'
 import TaxChart, { formatNaira } from './TaxChart'
+import TaxComputationTable from './TaxComputationTable'
 import { grossUpOldRegime } from '../engine/grossUpOld'
 
 type Direction = 'incomeToTax' | 'taxToIncome';
 
 export default function OldRegimeCalculator() {
   const [direction, setDirection] = useState<Direction>('incomeToTax');
-  const [monthlyGross, setMonthlyGross] = useState('300000')
+  const [isMonthly, setIsMonthly] = useState(true);
+  const [grossInput, setGrossInput] = useState('300000')
   const [targetNet, setTargetNet] = useState('500000')
   const [result, setResult] = useState<PayeResult | null>(null)
   const [reverseResult, setReverseResult] = useState<ReturnType<typeof grossUpOldRegime> | null>(null)
 
+  const periodLabel = isMonthly ? 'Monthly' : 'Annual';
+
   function handleCalculateForward() {
-    const monthly = parseFloat(monthlyGross) || 0
-    const annual = monthly * 12
+    const val = parseFloat(grossInput) || 0
     setResult(calculateOldRegime({
-      grossIncome: { basic: annual, housing: 0, transport: 0, utility: 0, wardrobe: 0, lunch: 0, bonus: 0, thirteenthMonth: 0, commission: 0, otherAllowances: 0 },
+      grossIncome: { basic: val, housing: 0, transport: 0, utility: 0, wardrobe: 0, lunch: 0, bonus: 0, thirteenthMonth: 0, commission: 0, otherAllowances: 0 },
       deductions: { nhfPercentage: 0, nhis: 0, pensionPercentage: 0, lifeAssurance: 0 },
       rent: { annualRentPaid: 0, hasRentReceipt: false },
-    }, false))
+    }, isMonthly))
   }
 
   function handleCalculateReverse() {
-    const annual = parseFloat(targetNet) * 12
+    const annual = parseFloat(targetNet) * (isMonthly ? 12 : 1)
     if (!annual) return
     setReverseResult(grossUpOldRegime(annual))
   }
 
-  const chartData = result
-    ? ([
-        { name: 'Net Pay', value: result.monthly.netPay },
-        { name: 'PITA Tax', value: result.monthly.taxDeducted },
-        { name: 'Pension', value: result.statutoryDeductions.pension / 12 },
-      ] as const).filter(d => d.value > 0) as unknown as { name: string; value: number }[]
-    : []
+  const rawChartData = result
+    ? isMonthly
+      ? [
+          { name: 'Net Pay', value: result.monthly.netPay },
+          { name: 'PITA Tax', value: result.monthly.taxDeducted },
+          { name: 'Pension', value: result.statutoryDeductions.pension / 12 },
+        ]
+      : [
+          { name: 'Net Pay', value: result.netIncome },
+          { name: 'PITA Tax', value: result.totalTax },
+          { name: 'Pension', value: result.statutoryDeductions.pension },
+        ]
+    : [];
+  const chartData: { name: string; value: number }[] = rawChartData.filter(d => d.value > 0);
 
   return (
     <div className="space-y-6">
@@ -57,17 +67,29 @@ export default function OldRegimeCalculator() {
         <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           {direction === 'incomeToTax' ? (
             <>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Monthly Gross Income</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">{periodLabel} Gross Income</h3>
+                <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+                  <button onClick={() => setIsMonthly(true)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${isMonthly ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
+                    Monthly
+                  </button>
+                  <button onClick={() => setIsMonthly(false)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${!isMonthly ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
+                    Annual
+                  </button>
+                </div>
+              </div>
               <p className="text-sm text-gray-600 mb-4">
-                Enter your total monthly gross income (basic + all allowances) to calculate PAYE under the old PITA regime.
+                Enter your total {periodLabel.toLowerCase()} gross income (basic + all allowances) to calculate PAYE under the old PITA regime.
               </p>
               <div className="flex items-end gap-3">
                 <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Total Monthly Gross Income</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Total {periodLabel} Gross Income</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">₦</span>
-                    <input type="number" value={monthlyGross}
-                      onChange={e => setMonthlyGross(e.target.value)}
+                    <input type="number" value={grossInput}
+                      onChange={e => setGrossInput(e.target.value)}
                       className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
                   </div>
                 </div>
@@ -81,11 +103,11 @@ export default function OldRegimeCalculator() {
             <>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Reverse Calculator (Gross-Up)</h3>
               <p className="text-sm text-gray-600 mb-4">
-                Enter your desired monthly take-home pay to find the required gross salary under the old PITA regime.
+                Enter your desired {periodLabel.toLowerCase()} take-home pay to find the required gross salary under the old PITA regime.
               </p>
               <div className="flex items-end gap-3">
                 <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Desired Monthly Net Pay</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Desired {periodLabel} Net Pay</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">₦</span>
                     <input type="number" value={targetNet}
@@ -121,51 +143,41 @@ export default function OldRegimeCalculator() {
           {direction === 'incomeToTax' && result ? (
             <div className="print-area space-y-4">
               <div className="print-card bg-blue-50 rounded-lg p-4 text-center">
-                <p className="print-text-sm text-blue-700">Monthly Net Pay</p>
-                <p className="print-text-xl font-bold text-blue-900">{formatNaira(result.monthly.netPay)}</p>
+                <p className="print-text-sm text-blue-700">{periodLabel} Net Pay</p>
+                <p className="print-text-xl font-bold text-blue-900">{formatNaira(isMonthly ? result.monthly.netPay : result.netIncome)}</p>
               </div>
               <div className="print-grid grid grid-cols-2 gap-3">
                 <div className="print-card bg-gray-50 rounded-lg p-3">
-                  <p className="print-text-sm text-gray-500">Gross Pay</p>
-                  <p className="print-font-bold">{formatNaira(result.monthly.grossPay)}</p>
+                  <p className="print-text-sm text-gray-500">{periodLabel} Gross Pay</p>
+                  <p className="print-font-bold">{formatNaira(isMonthly ? result.monthly.grossPay : result.grossIncome)}</p>
                 </div>
                 <div className="print-card bg-red-50 rounded-lg p-3">
-                  <p className="print-text-sm text-red-600">Monthly Tax</p>
-                  <p className="print-font-bold text-red-700">{formatNaira(result.monthly.taxDeducted)}</p>
+                  <p className="print-text-sm text-red-600">{periodLabel} Tax</p>
+                  <p className="print-font-bold text-red-700">{formatNaira(isMonthly ? result.monthly.taxDeducted : result.totalTax)}</p>
                 </div>
                 <div className="print-card bg-emerald-50 rounded-lg p-3">
-                  <p className="print-text-sm text-emerald-600">Annual Net</p>
-                  <p className="print-font-bold text-emerald-700">{formatNaira(result.netIncome)}</p>
+                  <p className="print-text-sm text-emerald-600">{isMonthly ? 'Annual Net' : 'Monthly Net'}</p>
+                  <p className="print-font-bold text-emerald-700">{formatNaira(isMonthly ? result.netIncome : result.monthly.netPay)}</p>
                 </div>
                 <div className="print-card bg-amber-50 rounded-lg p-3">
                   <p className="print-text-sm text-amber-600">Effective Tax Rate</p>
                   <p className="print-font-bold text-amber-700">{(result.effectiveTaxRate * 100).toFixed(1)}%</p>
                 </div>
                 <div className="print-card bg-red-50 rounded-lg p-3">
-                  <p className="print-text-sm text-red-600">Annual Tax Due</p>
-                  <p className="print-font-bold text-red-700">{formatNaira(result.totalTax)}</p>
+                  <p className="print-text-sm text-red-600">{isMonthly ? 'Annual Tax Due' : 'Monthly Tax Due'}</p>
+                  <p className="print-font-bold text-red-700">{formatNaira(isMonthly ? result.totalTax : result.monthly.taxDeducted)}</p>
                 </div>
               </div>
               <div className="print-card bg-purple-50 rounded-lg p-3">
                 <p className="print-text-sm text-purple-700">Pension (8%)</p>
-                <p className="print-font-bold text-purple-900">{formatNaira(result.statutoryDeductions.pension)}</p>
+                <p className="print-font-bold text-purple-900">{formatNaira(isMonthly ? result.statutoryDeductions.pension : result.statutoryDeductions.pension)}</p>
               </div>
               <div className="print-card bg-indigo-50 rounded-lg p-3">
                 <p className="print-text-sm text-indigo-700">CRA Deducted</p>
                 <p className="print-font-bold text-indigo-900">{formatNaira(result.rentRelief)}</p>
               </div>
               <TaxChart data={chartData} />
-              <details className="text-xs text-gray-500">
-                <summary className="cursor-pointer">View bracket breakdown</summary>
-                <div className="mt-2 space-y-1">
-                  {result.taxBrackets.map((b, i) => (
-                    <div key={i} className="flex justify-between">
-                      <span>{b.label} @ {(b.rate * 100).toFixed(0)}%</span>
-                      <span>{formatNaira(b.taxInBand)}</span>
-                    </div>
-                  ))}
-                </div>
-              </details>
+              <TaxComputationTable result={result} regime="old" />
             </div>
           ) : direction === 'taxToIncome' && reverseResult ? (
             <div className="print-area space-y-4">

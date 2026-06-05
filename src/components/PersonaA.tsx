@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { calculateLagosPaye2026, getDefaultDeductions } from '../engine/calculator'
 import type { GrossIncome, PayeResult, RentInfo, PreTaxDeductions } from '../engine/types'
 import TaxChart, { formatNaira } from './TaxChart'
+import TaxComputationTable from './TaxComputationTable'
+import ScenarioManager from './ScenarioManager'
 import { grossUpTargetNetPay } from '../engine/grossUp'
 
 const emptyIncome: GrossIncome = {
@@ -14,12 +16,15 @@ type Direction = 'incomeToTax' | 'taxToIncome';
 
 export default function PersonaA() {
   const [direction, setDirection] = useState<Direction>('incomeToTax');
+  const [isMonthly, setIsMonthly] = useState(true);
   const [income, setIncome] = useState<GrossIncome>({ ...emptyIncome, basic: 300_000, housing: 75_000, transport: 50_000 })
   const [annualRent, setAnnualRent] = useState(600_000)
   const [hasReceipt, setHasReceipt] = useState(true)
   const [result, setResult] = useState<PayeResult | null>(null)
   const [targetNet, setTargetNet] = useState('500000')
   const [reverseResult, setReverseResult] = useState<ReturnType<typeof grossUpTargetNetPay> | null>(null)
+
+  const periodLabel = isMonthly ? 'Monthly' : 'Annual';
 
   function updateField(field: keyof GrossIncome, value: string) {
     const num = parseFloat(value)
@@ -29,25 +34,35 @@ export default function PersonaA() {
   function handleCalculate() {
     const deductions: PreTaxDeductions = getDefaultDeductions()
     const rent: RentInfo = { annualRentPaid: annualRent, hasRentReceipt: hasReceipt }
-    setResult(calculateLagosPaye2026({ grossIncome: income, deductions, rent }, true))
+    setResult(calculateLagosPaye2026({ grossIncome: income, deductions, rent }, isMonthly))
   }
 
   function handleCalculateReverse() {
-    const annual = parseFloat(targetNet) * 12
+    const annual = parseFloat(targetNet) * (isMonthly ? 12 : 1)
     if (!annual) return
     setReverseResult(grossUpTargetNetPay(annual))
   }
 
-  const chartData = result
-    ? ([
-        { name: 'Net Pay', value: result.monthly.netPay },
-        { name: 'PAYE Tax', value: result.monthly.taxDeducted },
-        { name: 'Pension', value: result.statutoryDeductions.pension / 12 },
-        { name: 'NHF', value: result.statutoryDeductions.nhf / 12 },
-        { name: 'NHIS', value: result.statutoryDeductions.nhis / 12 },
-        { name: 'Life Assurance', value: result.statutoryDeductions.lifeAssurance / 12 },
-      ] as const).filter(d => d.value > 0) as unknown as { name: string; value: number }[]
-    : []
+  const rawChartData = result
+    ? isMonthly
+      ? [
+          { name: 'Net Pay', value: result.monthly.netPay },
+          { name: 'PAYE Tax', value: result.monthly.taxDeducted },
+          { name: 'Pension', value: result.statutoryDeductions.pension / 12 },
+          { name: 'NHF', value: result.statutoryDeductions.nhf / 12 },
+          { name: 'NHIS', value: result.statutoryDeductions.nhis / 12 },
+          { name: 'Life Assurance', value: result.statutoryDeductions.lifeAssurance / 12 },
+        ]
+      : [
+          { name: 'Net Pay', value: result.netIncome },
+          { name: 'PAYE Tax', value: result.totalTax },
+          { name: 'Pension', value: result.statutoryDeductions.pension },
+          { name: 'NHF', value: result.statutoryDeductions.nhf },
+          { name: 'NHIS', value: result.statutoryDeductions.nhis },
+          { name: 'Life Assurance', value: result.statutoryDeductions.lifeAssurance },
+        ]
+    : [];
+  const chartData: { name: string; value: number }[] = rawChartData.filter(d => d.value > 0);
 
   return (
     <div className="space-y-6">
@@ -69,7 +84,19 @@ export default function PersonaA() {
         <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           {direction === 'incomeToTax' ? (
             <>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Monthly Income Breakdown</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">{periodLabel} Income Breakdown</h3>
+                <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+                  <button onClick={() => setIsMonthly(true)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${isMonthly ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
+                    Monthly
+                  </button>
+                  <button onClick={() => setIsMonthly(false)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${!isMonthly ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
+                    Annual
+                  </button>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 {([
                   ['Basic Salary', 'basic'],
@@ -166,89 +193,40 @@ export default function PersonaA() {
           {direction === 'incomeToTax' && result ? (
             <div className="print-area space-y-4">
               <div className="print-card bg-blue-50 rounded-lg p-4 text-center">
-                <p className="print-text-sm text-blue-700">Monthly Net Pay</p>
-                <p className="print-text-xl font-bold text-blue-900">{formatNaira(result.monthly.netPay)}</p>
+                <p className="print-text-sm text-blue-700">{periodLabel} Net Pay</p>
+                <p className="print-text-xl font-bold text-blue-900">{formatNaira(isMonthly ? result.monthly.netPay : result.netIncome)}</p>
               </div>
               <div className="print-grid grid grid-cols-2 gap-3">
                 <div className="print-card bg-gray-50 rounded-lg p-3">
-                  <p className="print-text-sm text-gray-500">Gross Pay</p>
-                  <p className="print-font-bold">{formatNaira(result.monthly.grossPay)}</p>
+                  <p className="print-text-sm text-gray-500">{periodLabel} Gross Pay</p>
+                  <p className="print-font-bold">{formatNaira(isMonthly ? result.monthly.grossPay : result.grossIncome)}</p>
                 </div>
                 <div className="print-card bg-red-50 rounded-lg p-3">
-                  <p className="print-text-sm text-red-600">Monthly Tax</p>
-                  <p className="print-font-bold text-red-700">{formatNaira(result.monthly.taxDeducted)}</p>
+                  <p className="print-text-sm text-red-600">{periodLabel} Tax</p>
+                  <p className="print-font-bold text-red-700">{formatNaira(isMonthly ? result.monthly.taxDeducted : result.totalTax)}</p>
                 </div>
                 <div className="print-card bg-emerald-50 rounded-lg p-3">
-                  <p className="print-text-sm text-emerald-600">Annual Net</p>
-                  <p className="print-font-bold text-emerald-700">{formatNaira(result.netIncome)}</p>
+                  <p className="print-text-sm text-emerald-600">{isMonthly ? 'Annual Net' : 'Monthly Net'}</p>
+                  <p className="print-font-bold text-emerald-700">{formatNaira(isMonthly ? result.netIncome : result.monthly.netPay)}</p>
                 </div>
                 <div className="print-card bg-amber-50 rounded-lg p-3">
                   <p className="print-text-sm text-amber-600">Effective Tax Rate</p>
                   <p className="print-font-bold text-amber-700">{(result.effectiveTaxRate * 100).toFixed(1)}%</p>
                 </div>
                 <div className="print-card bg-red-50 rounded-lg p-3">
-                  <p className="print-text-sm text-red-600">Annual Tax Due</p>
-                  <p className="print-font-bold text-red-700">{formatNaira(result.totalTax)}</p>
+                  <p className="print-text-sm text-red-600">{isMonthly ? 'Annual Tax Due' : 'Monthly Tax Due'}</p>
+                  <p className="print-font-bold text-red-700">{formatNaira(isMonthly ? result.totalTax : result.monthly.taxDeducted)}</p>
                 </div>
               </div>
               <TaxChart data={chartData} />
-              <details className="text-xs text-gray-500">
-                <summary className="cursor-pointer">View computation breakdown</summary>
-                <div className="mt-2 space-y-1.5">
-                  <div className="flex justify-between font-medium text-gray-700">
-                    <span>Annual Gross Income</span>
-                    <span>{formatNaira(result.grossIncome)}</span>
-                  </div>
-                  <div className="border-t border-gray-100" />
-                  <div className="flex justify-between text-gray-600">
-                    <span>Less: Pension (8% of BHT)</span>
-                    <span>-{formatNaira(result.statutoryDeductions.pension)}</span>
-                  </div>
-                  <div className="flex justify-between text-gray-600">
-                    <span>Less: NHF (2.5% of basic)</span>
-                    <span>-{formatNaira(result.statutoryDeductions.nhf)}</span>
-                  </div>
-                  {result.statutoryDeductions.nhis > 0 && (
-                    <div className="flex justify-between text-gray-600">
-                      <span>Less: NHIS</span>
-                      <span>-{formatNaira(result.statutoryDeductions.nhis)}</span>
-                    </div>
-                  )}
-                  {result.statutoryDeductions.lifeAssurance > 0 && (
-                    <div className="flex justify-between text-gray-600">
-                      <span>Less: Life Assurance</span>
-                      <span>-{formatNaira(result.statutoryDeductions.lifeAssurance)}</span>
-                    </div>
-                  )}
-                  {result.rentRelief > 0 && (
-                    <div className="flex justify-between text-gray-600">
-                      <span>Less: Rent Relief</span>
-                      <span>-{formatNaira(result.rentRelief)}</span>
-                    </div>
-                  )}
-                  <div className="border-t border-gray-200" />
-                  <div className="flex justify-between font-medium text-gray-800">
-                    <span>Chargeable Income</span>
-                    <span>{formatNaira(result.chargeableIncome)}</span>
-                  </div>
-                  <div className="border-t border-gray-100" />
-                  {result.taxBrackets.map((b, i) => (
-                    <div key={i} className="flex justify-between text-gray-600">
-                      <span className="pl-2">{b.label} @ {(b.rate * 100).toFixed(0)}%</span>
-                      <span>{formatNaira(b.taxInBand)}</span>
-                    </div>
-                  ))}
-                  <div className="border-t border-gray-200" />
-                  <div className="flex justify-between font-semibold text-red-700">
-                    <span>Annual Tax Due</span>
-                    <span>{formatNaira(result.totalTax)}</span>
-                  </div>
-                  <div className="flex justify-between font-semibold text-blue-700">
-                    <span>Monthly Tax Due</span>
-                    <span>{formatNaira(result.monthly.taxDeducted)}</span>
-                  </div>
-                </div>
-              </details>
+              <TaxComputationTable result={result} regime="2026" />
+              <ScenarioManager
+                currentResult={result}
+                currentIncome={income}
+                currentAnnualRent={annualRent}
+                currentHasReceipt={hasReceipt}
+                currentIsMonthly={isMonthly}
+              />
             </div>
           ) : direction === 'taxToIncome' && reverseResult ? (
             <div className="print-area space-y-4">

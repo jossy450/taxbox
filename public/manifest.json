@@ -1,0 +1,20 @@
+{
+  "name": "Lagos PAYE 2026 — TaxBox NG",
+  "short_name": "TaxBox NG",
+  "description": "Lagos State PAYE Calculator & Tax Management Tool — Compliant with NTA 2026",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f9fafb",
+  "theme_color": "#1e3a8a",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["finance", "productivity", "utilities"],
+  "lang": "en-NG"
+}
